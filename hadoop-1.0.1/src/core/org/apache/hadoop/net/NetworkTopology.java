@@ -17,15 +17,13 @@
  */
 package org.apache.hadoop.net;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
+
+import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /** The class represents a cluster of computer with a tree hierarchical
  * network topology.
@@ -45,7 +43,7 @@ public class NetworkTopology {
   /* Inner Node represent a switch/router of a data center or rack.
    * Different from a leave node, it has non-null children.
    */
-  private class InnerNode extends NodeBase {
+  public class InnerNode extends NodeBase {
     private ArrayList<Node> children=new ArrayList<Node>();
     private int numOfLeaves;
         
@@ -85,7 +83,7 @@ public class NetworkTopology {
       if (firstChild instanceof InnerNode) {
         return false;
       }
-            
+
       return true;
     }
         
@@ -537,7 +535,55 @@ public class NetworkTopology {
     int leaveIndex = r.nextInt(numOfDatanodes);
     return innerNode.getLeaf(leaveIndex, node);
   }
-       
+    /**
+     * @Author: Suvodeep Pyne
+     *
+     * Get all the rack nodes.
+     * @return
+     */
+    public List<Node> getRackNodes()
+    {
+        return new ArrayList<Node>(clusterMap.getChildren());
+    }
+    /**
+     * @Author: Suvodeep Pyne
+     * @param node parameter should be a rack node.
+     *
+     * @return
+     */
+    public List<Node> getNodesForRack(final Node node) {
+        assert node instanceof InnerNode;
+        InnerNode rackNode = (InnerNode) node;
+        assert rackNode.isRack();
+        return new ArrayList<Node>(rackNode.getChildren());
+    }
+
+    public void sortByCapacity(List<Node> nodes) {
+        netlock.readLock().lock();
+        try {
+            Collections.sort(nodes, new Comparator<Node>() {
+                public int compare(Node o1, Node o2) {
+                    assert o1 instanceof DatanodeInfo;
+                    assert o2 instanceof DatanodeInfo;
+
+                    /**
+                     * a - b => ascending order.
+                     * Since more space is more favorable.
+                     *
+                     * b - a => for descending order in space
+                     */
+                    return ((DatanodeInfo) o2).getRemainingPercent() -
+                            ((DatanodeInfo) o1).getRemainingPercent() > 0 ? 1 : -1;
+                }
+            });
+
+        } finally {
+            netlock.readLock().unlock();
+        }
+    }
+
+
+
   /** return the number of leaves in <i>scope</i> but not in <i>excludedNodes</i>
    * if scope starts with ~, return the number of nodes that are not
    * in <i>scope</i> and <i>excludedNodes</i>; 

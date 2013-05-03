@@ -17,13 +17,14 @@
  */
 package org.apache.hadoop.hdfs.server.namenode;
 
-import org.apache.commons.logging.*;
+import org.apache.commons.logging.Log;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.FSConstants;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.net.NetworkTopology;
 import org.apache.hadoop.net.Node;
 import org.apache.hadoop.net.NodeBase;
+
 import java.util.*;
 
 /** The class is responsible for choosing the desired number of targets
@@ -138,7 +139,7 @@ class ReplicationTargetChooser {
                                           int maxNodesPerRack,
                                           List<DatanodeDescriptor> results) {
       
-    if (numOfReplicas == 0 || clusterMap.getNumOfLeaves()==0) {
+    if (numOfReplicas == 0 || clusterMap.getNumOfLeaves() == 0) {
       return writer;
     }
       
@@ -377,6 +378,71 @@ class ReplicationTargetChooser {
     return (DatanodeDescriptor[])results.toArray(
                                                  new DatanodeDescriptor[results.size()]);    
   }
+
+    /**
+     * Coded by Suvodeep Pyne
+     *
+     * @param numOfReplicas
+     * @param scope
+     * @param excludedNodes
+     * @param blocksize
+     * @return
+     */
+    private void chooseNodesByCapacity(int numOfReplicas,
+                                       String scope,
+                                       final List<Node> excludedNodes,
+                                       final long blocksize,
+                                       final int maxNodesPerRack,
+                                       final List<DatanodeDescriptor> results) throws NotEnoughReplicasException {
+        int numOfAvailableNodes = clusterMap.countNumOfAvailableNodes(scope, excludedNodes);
+        numOfReplicas = (numOfAvailableNodes<numOfReplicas)? numOfAvailableNodes:numOfReplicas;
+
+        boolean isExcluded=false;
+        if (scope.startsWith("~")) {
+            isExcluded=true;
+            scope = scope.substring(1);
+        }
+
+        final Node scopeNode = clusterMap.getNode(scope);
+        if (!(scopeNode instanceof NetworkTopology.InnerNode)) {
+            if (isGoodTarget((DatanodeDescriptor) scopeNode, blocksize, maxNodesPerRack, results)) {
+                results.add((DatanodeDescriptor) scopeNode);
+            }
+        }
+
+        final List<Node> availableNodes = new ArrayList<Node>();
+        if (isExcluded) {
+            final List<Node> rackNodes = clusterMap.getRackNodes();
+            rackNodes.remove(scopeNode);
+            for (Node rackNode : rackNodes) {
+                availableNodes.addAll(clusterMap.getNodesForRack(rackNode));
+            }
+        }
+        else {
+            availableNodes.addAll(clusterMap.getNodesForRack(scopeNode));
+        }
+
+        clusterMap.sortByCapacity(availableNodes);
+
+        for (Node choosenNode : availableNodes) {
+            if (!excludedNodes.contains(choosenNode)) {
+                assert choosenNode instanceof DatanodeDescriptor;
+                final DatanodeDescriptor result = (DatanodeDescriptor) choosenNode;
+                if (isGoodTarget(result, blocksize, maxNodesPerRack, results)) {
+                    results.add(result);
+                    excludedNodes.add(choosenNode);
+                    numOfReplicas--;
+                }
+            }
+            if (numOfReplicas <= 0) {
+                break;
+            }
+        }
+
+        if (numOfReplicas > 0) {
+            throw new NotEnoughReplicasException("Not able to place enough replicas");
+        }
+    }
     
   /* judge if a node is a good target.
    * return true if <i>node</i> has enough space, 
