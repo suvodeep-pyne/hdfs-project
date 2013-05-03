@@ -17,13 +17,12 @@
  */
 package org.apache.hadoop.net;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
-
 import java.util.*;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 /** The class represents a cluster of computer with a tree hierarchical
  * network topology.
@@ -557,32 +556,6 @@ public class NetworkTopology {
         assert rackNode.isRack();
         return new ArrayList<Node>(rackNode.getChildren());
     }
-
-    public void sortByCapacity(List<Node> nodes) {
-        netlock.readLock().lock();
-        try {
-            Collections.sort(nodes, new Comparator<Node>() {
-                public int compare(Node o1, Node o2) {
-                    assert o1 instanceof DatanodeInfo;
-                    assert o2 instanceof DatanodeInfo;
-
-                    /**
-                     * a - b => ascending order.
-                     * Since more space is more favorable.
-                     *
-                     * b - a => for descending order in space
-                     */
-                    return ((DatanodeInfo) o2).getRemainingPercent() -
-                            ((DatanodeInfo) o1).getRemainingPercent() > 0 ? 1 : -1;
-                }
-            });
-
-        } finally {
-            netlock.readLock().unlock();
-        }
-    }
-
-
 
   /** return the number of leaves in <i>scope</i> but not in <i>excludedNodes</i>
    * if scope starts with ~, return the number of nodes that are not

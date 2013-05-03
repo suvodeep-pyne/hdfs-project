@@ -467,7 +467,7 @@ class ReplicationTargetChooser {
             availableNodes.addAll(clusterMap.getNodesForRack(scopeNode));
         }
 
-        clusterMap.sortByCapacity(availableNodes);
+        sortByCapacity(availableNodes);
 
         for (Node choosenNode : availableNodes) {
             if (!excludedNodes.contains(choosenNode)) {
@@ -486,6 +486,29 @@ class ReplicationTargetChooser {
 
         if (numOfReplicas > 0) {
             throw new NotEnoughReplicasException("Not able to place enough replicas");
+        }
+    }
+
+    public void sortByCapacity(List<Node> nodes) {
+        try {
+            Collections.sort(nodes, new Comparator<Node>() {
+                public int compare(Node o1, Node o2) {
+                    assert o1 instanceof DatanodeInfo;
+                    assert o2 instanceof DatanodeInfo;
+
+                    /**
+                     * a - b => ascending order.
+                     * Since more space is more favorable.
+                     *
+                     * b - a => for descending order in space
+                     */
+                    return ((DatanodeInfo) o2).getRemainingPercent() -
+                            ((DatanodeInfo) o1).getRemainingPercent() > 0 ? 1 : -1;
+                }
+            });
+
+        } finally {
+
         }
     }
     
