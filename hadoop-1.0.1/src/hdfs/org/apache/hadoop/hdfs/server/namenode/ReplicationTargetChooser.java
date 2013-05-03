@@ -36,6 +36,9 @@ import java.util.*;
  * which is on the same rack as the first replca.
  */
 class ReplicationTargetChooser {
+    static enum BlockPlacementPolicy { RANDOM, CAPACITY_BASED }
+    private static final BlockPlacementPolicy policy = BlockPlacementPolicy.CAPACITY_BASED;
+
   private final boolean considerLoad; 
   private NetworkTopology clusterMap;
   private FSNamesystem fs;
@@ -178,7 +181,7 @@ class ReplicationTargetChooser {
           break;
         }
       default:
-        chooseRandom(numOfReplicas, NodeBase.ROOT, excludedNodes, 
+        chooseByPolicy(numOfReplicas, NodeBase.ROOT, excludedNodes,
                      blocksize, maxNodesPerRack, results);
       }
     } catch (NotEnoughReplicasException e) {
@@ -202,8 +205,8 @@ class ReplicationTargetChooser {
     throws NotEnoughReplicasException {
     // if no local machine, randomly choose one node
     if (localMachine == null)
-      return chooseRandom(NodeBase.ROOT, excludedNodes, 
-                          blocksize, maxNodesPerRack, results);
+      return chooseByPolicy(NodeBase.ROOT, excludedNodes,
+              blocksize, maxNodesPerRack, results);
       
     // otherwise try local machine first
     if (!excludedNodes.contains(localMachine)) {
@@ -236,13 +239,13 @@ class ReplicationTargetChooser {
     throws NotEnoughReplicasException {
     // no local machine, so choose a random machine
     if (localMachine == null) {
-      return chooseRandom(NodeBase.ROOT, excludedNodes, 
+      return chooseByPolicy(NodeBase.ROOT, excludedNodes,
                           blocksize, maxNodesPerRack, results);
     }
       
     // choose one from the local rack
     try {
-      return chooseRandom(
+      return chooseByPolicy(
                           localMachine.getNetworkLocation(),
                           excludedNodes, blocksize, maxNodesPerRack, results);
     } catch (NotEnoughReplicasException e1) {
@@ -258,17 +261,17 @@ class ReplicationTargetChooser {
       }
       if (newLocal != null) {
         try {
-          return chooseRandom(
+          return chooseByPolicy(
                               newLocal.getNetworkLocation(),
                               excludedNodes, blocksize, maxNodesPerRack, results);
         } catch(NotEnoughReplicasException e2) {
           //otherwise randomly choose one from the network
-          return chooseRandom(NodeBase.ROOT, excludedNodes,
+          return chooseByPolicy(NodeBase.ROOT, excludedNodes,
                               blocksize, maxNodesPerRack, results);
         }
       } else {
         //otherwise randomly choose one from the network
-        return chooseRandom(NodeBase.ROOT, excludedNodes,
+        return chooseByPolicy(NodeBase.ROOT, excludedNodes,
                             blocksize, maxNodesPerRack, results);
       }
     }
@@ -290,10 +293,10 @@ class ReplicationTargetChooser {
     int oldNumOfReplicas = results.size();
     // randomly choose one node from remote racks
     try {
-      chooseRandom(numOfReplicas, "~"+localMachine.getNetworkLocation(),
+      chooseByPolicy(numOfReplicas, "~"+localMachine.getNetworkLocation(),
                    excludedNodes, blocksize, maxReplicasPerRack, results);
     } catch (NotEnoughReplicasException e) {
-      chooseRandom(numOfReplicas-(results.size()-oldNumOfReplicas),
+      chooseByPolicy(numOfReplicas-(results.size()-oldNumOfReplicas),
                    localMachine.getNetworkLocation(), excludedNodes, blocksize, 
                    maxReplicasPerRack, results);
     }
@@ -378,6 +381,48 @@ class ReplicationTargetChooser {
     return (DatanodeDescriptor[])results.toArray(
                                                  new DatanodeDescriptor[results.size()]);    
   }
+
+
+    private DatanodeDescriptor chooseByPolicy(String nodes,
+                                              List<Node> excludedNodes,
+                                              long blocksize,
+                                              int maxNodesPerRack,
+                                              List<DatanodeDescriptor> results)
+            throws NotEnoughReplicasException {
+        switch (policy) {
+            case RANDOM:return chooseRandom(NodeBase.ROOT, excludedNodes,
+                    blocksize, maxNodesPerRack, results);
+            case CAPACITY_BASED:
+                chooseNodesByCapacity(1, nodes, excludedNodes, blocksize, maxNodesPerRack, results);
+                return results.get(results.size() - 1);
+        }
+        return null;
+    }
+
+    private void chooseByPolicy(int numOfReplicas,
+                                String nodes,
+                                List<Node> excludedNodes,
+                                long blocksize,
+                                int maxNodesPerRack,
+                                List<DatanodeDescriptor> results)
+            throws NotEnoughReplicasException {
+        switch (policy) {
+            case RANDOM:chooseRandom(numOfReplicas,
+                    nodes,
+                    excludedNodes,
+                    blocksize,
+                    maxNodesPerRack,
+                    results);
+            case CAPACITY_BASED:
+                chooseNodesByCapacity(numOfReplicas,
+                        nodes,
+                        excludedNodes,
+                        blocksize,
+                        maxNodesPerRack,
+                        results);
+        }
+    }
+
 
     /**
      * Coded by Suvodeep Pyne
